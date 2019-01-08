@@ -32,8 +32,7 @@ class MoveMouseRandomlyThread(Thread):
     self.startingPosition = position()
 
   def run(self):
-    start = currentTimeMillis()
-    while not self.terminated and currentTimeMillis() - start < 10000:
+    while not self.terminated:
       moveTo(self.startingPosition[0] + randrange(-self.deviation, self.deviation), \
         self.startingPosition[1] + randrange(-self.deviation, self.deviation),\
         0.2)
@@ -72,7 +71,7 @@ def detectDeath(x, y, w, h):
   for i in images:
     pt = matchWindowAndTemplate(i, x, y, w, h, 0.7, screenshot)
     if pt != None:
-      print("death detected") 
+      print("death detected", i) 
       click()     
       os._exit(1)
       break
@@ -161,35 +160,12 @@ def teleportToDoor(x, y, w, h):
     moveTo(startX + randrange(-20, 20), startY + randrange(-20, 20))
     sleep(0.3)
 
-  # sleep(0.5)
-
-  # moveTo(x + 400 + randrange(-50, 50), y + 300 + randrange(-50, 50))
-
   door = matchWindowAndMultipleTemplatesAndMoveMouse([
     ('images/door2.png', 0.5, 75 + randrange(-10, 10), 110 + randrange(-10, 10)),
     ('images/door light.png', 0.5, 80 + randrange(-10, 10), 116 + randrange(-10, 10)),
     ('images/door4.png', 0.5, 49 + randrange(-10, 10), 37 + randrange(-10, 10)),
     ('images/door5.png', 0.5, 108 + randrange(-10, 10), 35 + randrange(-10, 10)),
   ], x, y, w, h, 0, 0)
-
-  # pt = matchWindowAndTemplate('images/door2.png', x, y, w, h, 0.5)
-
-  # if pt != None:
-  #   moveTo(x + pt[0] + 75 + randrange(-10, 10), y + pt[1] + 110 + randrange(-10, 10))
-  # else:    
-  #   print("matching light doors")
-  #   pt = matchWindowAndTemplateWithRetries('images/door light.png', x, y, w, h, 0.5)
-
-  #   if pt != None:
-  #     moveTo(x + pt[0] + 80 + randrange(-10, 10), y + pt[1] + 116 + randrange(-10, 10))
-  #   else:
-  #     print("matching door 4")
-  #     pt = matchWindowAndTemplateWithRetries('images/door4.png', x, y, w, h, 0.5)   
-      
-  #     if pt != None:
-  #       moveTo(x + pt[0] + 49 + randrange(-10, 10), y + pt[1] + 37 + randrange(-10, 10))
-  #     else:
-  #       return False 
 
   click(button = "right")  
 
@@ -216,6 +192,48 @@ def getRandomText():
   r = range(0, randrange(5, 10))
   return "".join([choice(string.ascii_lowercase) for i in r])
 
+def pickUpPotIfNoneExist(x, y, w, h, red):
+  if getPotPositionInBelt(x, y, w, h, red) is None:
+    if not red:
+      pickUpPot('images/mana pot white.png', x, y, w, h)
+    else:
+      pickUpPot('images/health pot.png', x, y, w, h)
+  else:
+    print("not picking up", "red" if red else "blue", "because it is present in belt")      
+
+def getPotPositionInBelt(x, y, w, h, red):
+  screenshot = takeScreenshot(x + 424, y + 590, 125, 33)
+  screenshot = np.array(screenshot)
+  hsv = cv2.cvtColor(screenshot, cv2.COLOR_RGB2HSV)
+
+  if not red:
+    mask = cv2.inRange(hsv, (110, 100, 20), (130, 255, 255)) # detect blue
+  else:
+    maskRed1 = cv2.inRange(hsv, (175, 100, 20), (180, 255, 255)) # detect red
+    maskRed2 = cv2.inRange(hsv, (0, 100, 20), (5, 255, 255)) # detect red
+    mask = cv2.bitwise_or(maskRed1, maskRed2)
+
+  # cv2.imwrite("t.png", mask)
+
+  points = cv2.findNonZero(mask)
+
+  if points is not None:
+    return points[0][0][0]
+  else:
+    return None
+
+def drinkPot(x, y, w, h, red):
+
+  position = getPotPositionInBelt(x, y, w, h, red)
+  # 33 66 99
+
+  if position is not None:
+    numberToPress = int(position / 33) + 1
+    print("drinking", "red" if red else "blue", "pot at", numberToPress)
+    press(str(numberToPress))
+  else:
+    print("no red pot found" if red else "no blue pot found")
+
 def killPindle(x, y, w, h):
   pt = matchWindowAndTemplateWithRetries('images/house middle.png', x, y, w, h, 0.5)
 
@@ -228,7 +246,7 @@ def killPindle(x, y, w, h):
 
   clickMouseForXMillis(500 + randrange(-100, 500))
 
-  press('4' if random() < 0.5 else '3')
+  drinkPot(x, y, w, h, False)
 
   clickMouseForXMillis(1100 + randrange(-100, 500))
 
@@ -298,11 +316,11 @@ def exitGame(x, y, start):
 
   print("total run", (currentTimeMillis() - start) / 1000, "s")
 
-def pickUpManaPots(x, y, w, h):
-  pt = matchWindowAndTemplate('images/mana pot white.png', x, y, w, h, 0.5)
+def pickUpPot(image, x, y, w, h):
+  pt = matchWindowAndTemplate(image, x, y, w, h, 0.6)
   
   if pt != None:        
-    print("moving to pot")
+    print("moving to pot", image)
     press("d")
     moveTo(x + pt[0] + 20, y + pt[1] + 8)
     
@@ -313,7 +331,33 @@ def pickUpManaPots(x, y, w, h):
 
     sleep(0.50 + randrange(-20, 20) / 1000)
   else:
-    print("no pot")  
+    print("no pot", image) 
+
+def drinkHpPot(x, y, w, h):
+  # x 30 y 535
+  # w 85 h 85
+
+  screenshot = takeScreenshot(x + 30, y + 535, 85, 85)
+  screenshot = np.array(screenshot)
+  hsv = cv2.cvtColor(screenshot, cv2.COLOR_RGB2HSV)
+
+  maskRed1 = cv2.inRange(hsv, (175, 100, 20), (180, 255, 255))
+  maskRed2 = cv2.inRange(hsv, (0, 100, 20), (5, 255, 255))
+  maskGreen = cv2.inRange(hsv, (45, 100, 20), (75, 255, 255)) 
+  maskRed = cv2.bitwise_or(maskRed1, maskRed2)
+  mask = cv2.bitwise_or(maskRed, maskGreen)
+
+  # cv2.imwrite("t.png", mask)
+
+  points = cv2.findNonZero(mask)
+
+  if points is not None:
+    hpStart = points[0][0][1]
+    print("hp start", hpStart)
+    if hpStart > 15:
+      print("hp too low")  
+      sleep(0.2)
+      drinkPot(x, y, w, h, True)
 
 def teleportToTownOrExit(x, y, w, h, start):
   keyUp("alt")
@@ -414,11 +458,11 @@ def onWindowsFound(hwnd, extra):
 
       detectMercenary(x, y, w, h)
 
-      # press('b')
+      press('b')
 
       castShield()
 
-      # press('b')
+      press('b')
 
       dt = Timer(1, detectDeath, (x, y, w, h))
       dt.setDaemon(True)
@@ -448,11 +492,14 @@ def onWindowsFound(hwnd, extra):
 
       teleportToLoot()
 
+      drinkHpPot(x, y, w, h)
+
       keyDown('alt')
 
       sleep(2 + randrange(-500, 6000) / 1000)
 
-      pickUpManaPots(x, y, w, h)
+      pickUpPotIfNoneExist(x, y, w, h, False)
+      pickUpPotIfNoneExist(x, y, w, h, True)
 
       if not pickUpItems(x, y, w, h, start):
         print("stopping because inventory is full")

@@ -192,31 +192,70 @@ def getRandomText():
   r = range(0, randrange(5, 10))
   return "".join([choice(string.ascii_lowercase) for i in r])
 
-def pickUpPotIfNoneExist(x, y, w, h, red):
-  if getPotPositionInBelt(x, y, w, h, red) is None:
-    if not red:
-      pickUpPot('images/mana pot white.png', x, y, w, h)
-    else:
-      pickUpPot('images/health pot.png', x, y, w, h)
-  else:
-    print("not picking up", "red" if red else "blue", "because it is present in belt")      
+# def pickUpPotIfNoneExist(x, y, w, h, type):
+#   if getPotPositionInBelt(x, y, w, h, type) is None:
+#     if type == "blue":
+#       pickUpPot('images/mana pot white.png', x, y, w, h)
+#     elif type == "red":
+#       pickUpPot('images/health pot.png', x, y, w, h)
+#   else:
+#     print("not picking up", type, "because it is present in belt")      
+
+def countNonesInArray(arr):
+  count = 0
+  for i in arr:
+    if i is None:
+      count += 1
+  return count
+
+def pickupPots(x, y, w, h):
+  belt = getBeltContent(x, y)
+
+  bluePots = 0
+  redPots = 0
+  # lastEmptyColumnWentTo = "red"
+
+  for column in belt:
+    if column[0] is None:
+      bluePots += 4
+      # if lastEmptyColumnWentTo == "blue":
+      #   redPots += 4
+      #   lastEmptyColumnWentTo = "red"
+      # elif lastEmptyColumnWentTo == "red":
+      #   bluePots += 4
+      #   lastEmptyColumnWentTo = "blue"
+    
+    elif column[0] == "red":
+      redPots += countNonesInArray(column)
+    elif column[0] == "blue":
+      bluePots += countNonesInArray(column)
+
+  print("will pick up", bluePots, "blue pots and", redPots, "red pots")
+
+  for _ in range(bluePots):
+    if not pickUpPot('images/mana pot white.png', x, y, w, h):
+      break
+  
+  for _ in range(redPots):
+    if not pickUpPot('images/health pot.png', x, y, w, h):
+      break
 
 def inRangeBlue(hsv):
-  return cv2.inRange(hsv, (110, 100, 20), (130, 255, 255))
+  return cv2.inRange(hsv, (115, 200, 20), (125, 255, 255))
 
 def inRangeRed(hsv):
   maskRed1 = cv2.inRange(hsv, (175, 100, 20), (180, 255, 255))
   maskRed2 = cv2.inRange(hsv, (0, 100, 20), (5, 255, 255))
   return cv2.bitwise_or(maskRed1, maskRed2)
 
-def getPotPositionInBelt(x, y, w, h, red):
+def getPotPositionInBelt(x, y, w, h, type):
   screenshot = takeScreenshot(x + 424, y + 590, 125, 33)
   # screenshot = np.array(screenshot)
   hsv = cv2.cvtColor(screenshot, cv2.COLOR_RGB2HSV)
 
-  if not red:
+  if type == "blue":
     mask = inRangeBlue(hsv)
-  else:
+  elif type == "red":
     mask = inRangeRed(hsv)
 
   # cv2.imwrite("t.png", mask)
@@ -228,33 +267,32 @@ def getPotPositionInBelt(x, y, w, h, red):
   else:
     return None
 
-def drinkPot(x, y, w, h, red):
+def drinkPot(x, y, w, h, type):
 
-  position = getPotPositionInBelt(x, y, w, h, red)
-  # 33 66 99
+  position = getPotPositionInBelt(x, y, w, h, type)
 
   if position is not None:
     numberToPress = int(position / 33) + 1
-    print("drinking", "red" if red else "blue", "pot at", numberToPress)
+    print("drinking", type, "pot at", numberToPress)
     press(str(numberToPress))
   else:
-    print("no red pot found" if red else "no blue pot found")
+    print("no", type, "pot found")
 
 def killPindle(x, y, w, h):
-  pt = matchWindowAndTemplateWithRetries('images/house middle.png', x, y, w, h, 0.5)
+  pt = matchWindowAndTemplateWithRetries('images/house middle2.png', x, y, w, h, 0.7)
 
   if pt == None:
     return False
 
-  moveTo(x + pt[0] + 115 + randrange(-5, 5), y + pt[1] + 80 + randrange(-5, 5))
+  moveTo(x + pt[0] + 188 + randrange(-10, 10), y + pt[1] + 116 + randrange(-10, 10))
 
   press('a')
 
-  clickMouseForXMillis(500 + randrange(-100, 500))
+  clickMouseForXMillis(1300 + randrange(-100, 500))
 
-  drinkPot(x, y, w, h, False)
+  # drinkPot(x, y, w, h, "blue")
 
-  clickMouseForXMillis(1100 + randrange(-100, 500))
+  # clickMouseForXMillis(1100 + randrange(-100, 500))
 
   # switchWeapon()
 
@@ -323,7 +361,7 @@ def exitGame(x, y, start):
   print("total run", (currentTimeMillis() - start) / 1000, "s")
 
 def pickUpPot(image, x, y, w, h):
-  pt = matchWindowAndTemplate(image, x, y, w, h, 0.6)
+  pt = matchWindowAndTemplate(image, x, y, w, h, 0.5)
   
   if pt != None:        
     print("moving to pot", image)
@@ -336,35 +374,61 @@ def pickUpPot(image, x, y, w, h):
       click(button = "right")
 
     sleep(0.50 + randrange(-20, 20) / 1000)
+
+    return True
   else:
     print("no pot", image) 
+    return False
 
 def inRangeGreen(hsv):
   return cv2.inRange(hsv, (45, 100, 20), (75, 255, 255)) 
 
-def drinkHpPot(x, y, w, h):
-  # x 30 y 535
-  # w 85 h 85
+class DrinkPotWhenLowOnResources(Thread):
+  def __init__(self, x, y, w, h, type, rx, ry, rw, rh):
+    Thread.__init__(self)
+    self.daemon = True
+    self.x = x
+    self.y = y
+    self.w = w
+    self.h = h
+    self.rx = rx
+    self.ry = ry
+    self.rw = rw
+    self.rh = rh
+    self.type = type
+    self.terminated = False
 
-  screenshot = takeScreenshot(x + 30, y + 535, 85, 85)
-  # screenshot = np.array(screenshot)
-  hsv = cv2.cvtColor(screenshot, cv2.COLOR_RGB2HSV)
+  def stop(self):
+    self.terminated = True    
 
-  maskRed = inRangeRed(hsv)
-  maskGreen = inRangeGreen(hsv)
-  mask = cv2.bitwise_or(maskRed, maskGreen)
+  def run(self):
+    print("drink pot when low on resources started", \
+      self.x, self.y, self.w, self.h, \
+      self.type, self.rx, self.ry, self.rw, self.rh)
 
-  # cv2.imwrite("t.png", mask)
+    while not self.terminated:
+      screenshot = takeScreenshot(self.x + self.rx, self.y + self.ry, self.rw, self.rh)
+      hsv = cv2.cvtColor(screenshot, cv2.COLOR_RGB2HSV)
 
-  points = cv2.findNonZero(mask)
+      if self.type == "red":
+        maskRed = inRangeRed(hsv)
+        maskGreen = inRangeGreen(hsv)
+        mask = cv2.bitwise_or(maskRed, maskGreen)
+        # cv2.imwrite("red.png", mask)
+      elif self.type == "blue":
+        mask = inRangeBlue(hsv)
+        # cv2.imwrite("blue.png", mask)
 
-  if points is not None:
-    hpStart = points[0][0][1]
-    print("hp start", hpStart)
-    if hpStart > 15:
-      print("hp too low")  
+      points = cv2.findNonZero(mask)
+
+      if points is not None:
+        startY = points[0][0][1]
+        if startY > 15 and not self.terminated:
+          print("resource", self.type, "too low drinking pot")  
+          drinkPot(self.x, self.y, self.w, self.h, self.type)
+          sleep(6)
+
       sleep(0.2)
-      drinkPot(x, y, w, h, True)
 
 def teleportToTownOrExit(x, y, w, h, start):
   keyUp("alt")
@@ -440,6 +504,51 @@ def closeTeamviewerDialog(x, y, w, h):
   else:
     print("no teamviewer")  
 
+def setBeltPots(mask, belt, type):
+  points = cv2.findNonZero(mask)
+
+  if points is not None:
+    for row in range(4):
+      for column in range(4):
+        startX = row * 33
+        stopX = (row + 1) * 33
+        startY = (3 - column) * 33
+        stopY = (4 - column) * 33
+        # print("column", column, "row", row, "y", startY, "-", stopY, "x", startX, "-", stopX)
+        for p in points:
+          px = p[0][0]
+          py = p[0][1]
+          if startX <= px and px < stopX and \
+            startY <= py and py < stopY:
+            belt[row][column] = type
+            break  
+
+def getBeltContent(x, y):
+  press("~")
+  sleep(0.1)
+
+  belt = [[None, None, None, None], [None, None, None, None], [None, None, None, None], [None, None, None, None]]
+  
+  bx = x + 422
+  by = y + 492
+  bw = 127
+  bh = 133
+
+  screenshot = takeScreenshot(bx, by, bw, bh)
+  hsv = cv2.cvtColor(screenshot, cv2.COLOR_RGB2HSV)
+  maskBlue = inRangeBlue(hsv)
+  maskRed = inRangeRed(hsv)
+  # cv2.imwrite("t.png", mask)
+
+  setBeltPots(maskBlue, belt, "blue")
+  setBeltPots(maskRed, belt, "red")
+
+  print("belt content", belt)
+
+  press("~")  
+
+  return belt            
+
 def onWindowsFound(hwnd, extra):
   rect = win32gui.GetWindowRect(hwnd)
   x = rect[0]
@@ -458,8 +567,14 @@ def onWindowsFound(hwnd, extra):
 
     while currentTimeMillis() - programStart < runTime:
       start = currentTimeMillis()
-      
+
       createGame(x, y)
+
+      dhpt = DrinkPotWhenLowOnResources(x, y, w, h, "red", 30, 535, 85, 85)
+      dhpt.start()
+
+      dmpt = DrinkPotWhenLowOnResources(x, y, w, h, "blue", 691, 535, 85, 85)
+      dmpt.start()
 
       closeTeamviewerDialog(x, y, w, h)
 
@@ -482,37 +597,45 @@ def onWindowsFound(hwnd, extra):
       if not clickOnPortal(x, y, w, h):
         print("something went wrong while clicking on portal, exiting early")
         sleep(0.5)
+        dhpt.stop()
+        dmpt.stop()
         exitGame(x, y, start)
         continue
       
       if not teleportToDoor(x, y, w, h):
         print("something went wrong while teleporting to door, exiting early")
+        dhpt.stop()
+        dmpt.stop()
         sleep(0.5)
         exitGame(x, y, start)
         continue
 
       if not killPindle(x, y, w, h):
         print("something went wrong while killing Pindle, exiting early")
+        dhpt.stop()
+        dmpt.stop()
         sleep(0.5)
         exitGame(x, y, start)
         continue        
 
       teleportToLoot()
 
-      drinkHpPot(x, y, w, h)
-
       keyDown('alt')
 
       sleep(2 + randrange(-500, 6000) / 1000)
 
-      pickUpPotIfNoneExist(x, y, w, h, False)
-      pickUpPotIfNoneExist(x, y, w, h, True)
+      pickupPots(x, y, w, h)
 
       if not pickUpItems(x, y, w, h, start):
         print("stopping because inventory is full")
+        dhpt.stop()
+        dmpt.stop()
         break
       
       keyUp('alt')
+
+      dhpt.stop()
+      dmpt.stop()
 
       exitGame(x, y, start)
 

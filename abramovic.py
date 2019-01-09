@@ -48,13 +48,13 @@ def focusWindow(hwnd, x, y):
 
   click(x = x + 150, y = y + 10)
 
-def detectMercenary(x, y, w, h):
+def exitIfMercenaryIsNotPresent(x, y, w, h):
   pt = matchWindowAndTemplate("images/mercenary.png", x, y, w, h, 0.7)
   if pt == None:
     print("no mercenary") 
     os._exit(1)    
 
-def detectDeath(x, y, w, h):
+def exitIfDead(x, y, w, h):
   print("detecting death")
 
   images = [
@@ -90,16 +90,16 @@ def gotoPortal(x, y, w, h):
   sleep(0.5)
   mouseUp()
   t.stop()  
-  sleep(0.35)
+  sleep(0.2)
 
 def takeScreenshot(x, y, w, h):
-  return screenshot(region=(x, y, w, h))
+  return np.array(screenshot(region=(x, y, w, h)))
 
 def matchWindowAndTemplate(templateFilename, x, y, w, h, treshold = 0.8, screenshot = None):
-  if screenshot == None:
+  if screenshot is None:
     screenshot = takeScreenshot(x, y, w, h)
   
-  screenshot = np.array(screenshot)
+  # screenshot = np.array(screenshot)
 
   template = cv2.imread(templateFilename, 0)
   image = cv2.cvtColor(screenshot, cv2.COLOR_RGB2GRAY)
@@ -158,7 +158,7 @@ def teleportToDoor(x, y, w, h):
   for i in range(3):
     click(button = "right")
     moveTo(startX + randrange(-20, 20), startY + randrange(-20, 20))
-    sleep(0.3)
+    sleep(0.4)
 
   door = matchWindowAndMultipleTemplatesAndMoveMouse([
     ('images/door2.png', 0.5, 75 + randrange(-10, 10), 110 + randrange(-10, 10)),
@@ -201,17 +201,23 @@ def pickUpPotIfNoneExist(x, y, w, h, red):
   else:
     print("not picking up", "red" if red else "blue", "because it is present in belt")      
 
+def inRangeBlue(hsv):
+  return cv2.inRange(hsv, (110, 100, 20), (130, 255, 255))
+
+def inRangeRed(hsv):
+  maskRed1 = cv2.inRange(hsv, (175, 100, 20), (180, 255, 255))
+  maskRed2 = cv2.inRange(hsv, (0, 100, 20), (5, 255, 255))
+  return cv2.bitwise_or(maskRed1, maskRed2)
+
 def getPotPositionInBelt(x, y, w, h, red):
   screenshot = takeScreenshot(x + 424, y + 590, 125, 33)
-  screenshot = np.array(screenshot)
+  # screenshot = np.array(screenshot)
   hsv = cv2.cvtColor(screenshot, cv2.COLOR_RGB2HSV)
 
   if not red:
-    mask = cv2.inRange(hsv, (110, 100, 20), (130, 255, 255)) # detect blue
+    mask = inRangeBlue(hsv)
   else:
-    maskRed1 = cv2.inRange(hsv, (175, 100, 20), (180, 255, 255)) # detect red
-    maskRed2 = cv2.inRange(hsv, (0, 100, 20), (5, 255, 255)) # detect red
-    mask = cv2.bitwise_or(maskRed1, maskRed2)
+    mask = inRangeRed(hsv)
 
   # cv2.imwrite("t.png", mask)
 
@@ -301,7 +307,7 @@ def createGame(x, y):
 
   moveTo(x + randrange(200, 600), y + randrange(100, 500))
 
-  sleep(2.5)   
+  sleep(4.5)   
 
 def exitGame(x, y, start):
   keyUp('alt')
@@ -333,18 +339,19 @@ def pickUpPot(image, x, y, w, h):
   else:
     print("no pot", image) 
 
+def inRangeGreen(hsv):
+  return cv2.inRange(hsv, (45, 100, 20), (75, 255, 255)) 
+
 def drinkHpPot(x, y, w, h):
   # x 30 y 535
   # w 85 h 85
 
   screenshot = takeScreenshot(x + 30, y + 535, 85, 85)
-  screenshot = np.array(screenshot)
+  # screenshot = np.array(screenshot)
   hsv = cv2.cvtColor(screenshot, cv2.COLOR_RGB2HSV)
 
-  maskRed1 = cv2.inRange(hsv, (175, 100, 20), (180, 255, 255))
-  maskRed2 = cv2.inRange(hsv, (0, 100, 20), (5, 255, 255))
-  maskGreen = cv2.inRange(hsv, (45, 100, 20), (75, 255, 255)) 
-  maskRed = cv2.bitwise_or(maskRed1, maskRed2)
+  maskRed = inRangeRed(hsv)
+  maskGreen = inRangeGreen(hsv)
   mask = cv2.bitwise_or(maskRed, maskGreen)
 
   # cv2.imwrite("t.png", mask)
@@ -423,7 +430,7 @@ def pickUpItems(x, y, w, h, start):
 
   return True
 
-def detectTeamviewer(x, y, w, h):
+def closeTeamviewerDialog(x, y, w, h):
   pt = matchWindowAndTemplate("images/teamviewer.png", x, y, w, h)
   if pt != None:
     print("detected teamviewer")
@@ -451,12 +458,10 @@ def onWindowsFound(hwnd, extra):
 
     while currentTimeMillis() - programStart < runTime:
       start = currentTimeMillis()
-
+      
       createGame(x, y)
 
-      detectTeamviewer(x, y, w, h)
-
-      detectMercenary(x, y, w, h)
+      closeTeamviewerDialog(x, y, w, h)
 
       press('b')
 
@@ -464,13 +469,15 @@ def onWindowsFound(hwnd, extra):
 
       press('b')
 
-      dt = Timer(1, detectDeath, (x, y, w, h))
+      dt = Timer(1, exitIfDead, (x, y, w, h))
       dt.setDaemon(True)
       dt.start()
       
       gotoPortal(x, y, w, h)
 
-      detectTeamviewer(x, y, w, h)
+      closeTeamviewerDialog(x, y, w, h)
+
+      # exitIfMercenaryIsNotPresent(x, y, w, h)
 
       if not clickOnPortal(x, y, w, h):
         print("something went wrong while clicking on portal, exiting early")

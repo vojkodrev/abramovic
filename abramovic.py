@@ -426,7 +426,7 @@ class DrinkPotWhenLowOnResources(Thread):
         if startY > 15 and not self.terminated:
           print("resource", self.type, "too low drinking pot")  
           drinkPot(self.x, self.y, self.w, self.h, self.type)
-          sleep(6)
+          sleep(4 + randrange(0, 2000) / 1000)
 
       sleep(0.2)
 
